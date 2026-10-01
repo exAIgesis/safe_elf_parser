@@ -17,14 +17,14 @@ jobs:
       - name: setup alire
         uses: alire-project/setup-alire@v3
 
-      - name: Install gnatprove
-        run: alr -n with gnatprove
-
       - name: debug location
         run: |
           pwd
           ls -la
           find . -name alire.toml
+      
+      - name: Install gnatprove
+        run: alr -n with gnatprove
 
       - name: Run gnatprove
         run: alr -n gnatprove -j0 --level=2 --checks-as-errors=on --mode="gold"
