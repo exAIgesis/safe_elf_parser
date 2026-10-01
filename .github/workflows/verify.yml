@@ -1,0 +1,24 @@
+name: SPARK verify
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  gnatprove:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup alire
+        uses: alire-project/setup-alire@v3
+
+      - name: Install gnatprove
+        run: alr with gnatprove
+
+      - name: Run gnatprove
+        run: alr gnatprove
