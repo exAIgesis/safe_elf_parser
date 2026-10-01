@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@latest
+        uses: actions/checkout@v7
 
       - name: setup alire
         uses: alire-project/setup-alire@latest
