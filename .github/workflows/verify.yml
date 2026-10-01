@@ -12,17 +12,11 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@latest
 
       - name: setup alire
-        uses: alire-project/setup-alire@v3
+        uses: alire-project/setup-alire@latest
 
-      - name: debug location
-        run: |
-          pwd
-          ls -la
-          find . -name alire.toml
-      
       - name: Install gnatprove
         run: alr -n with gnatprove
 
