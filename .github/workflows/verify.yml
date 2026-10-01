@@ -1,0 +1,25 @@
+name: SPARK verify
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  gnatprove:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      - name: setup alire
+        uses: alire-project/setup-alire@latest
+
+      - name: Install gnatprove
+        run: alr -n build
+      # this should also pull gnatprove automatically
+
+      - name: Run gnatprove
+        run: alr -n gnatprove -j0 --level=2 --checks-as-errors=on --mode="gold"
