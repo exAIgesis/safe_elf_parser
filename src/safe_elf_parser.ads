@@ -146,16 +146,16 @@ package Safe_Elf_Parser with SPARK_Mode => On is
 	
 	-- 32 bit section header
 	type Elf32_Shdr is record
-		sh_name : Elf32_Word;
-		sh_type : Elf32_Word;
-		sh_flags : Elf32_Word;
-		sh_addr : Elf32_Addr;
-		sh_offset : Elf32_Off;
-		sh_size : Elf32_Word;
-		sh_link : Elf32_Word;
-		sh_info : Elf32_Word;
-		sh_addralign : Elf32_Word;
-		sh_entsize : Elf32_Word;
+		sh_name : Elf32_Word := 0;
+		sh_type : Elf32_Word := 0;
+		sh_flags : Elf32_Word := 0;
+		sh_addr : Elf32_Addr := 0;
+		sh_offset : Elf32_Off := 0;
+		sh_size : Elf32_Word := 0;
+		sh_link : Elf32_Word := 0;
+		sh_info : Elf32_Word := 0;
+		sh_addralign : Elf32_Word := 0;
+		sh_entsize : Elf32_Word := 0;
 	end record
 	with Convention => C, Alignment => 4, Size => 320;
 
@@ -175,16 +175,16 @@ package Safe_Elf_Parser with SPARK_Mode => On is
 	-- 64 bit section header
 	subtype Elf64_Xword is unsigned_long_long;
 	type Elf64_Shdr is record
-		sh_name : Elf64_Word;
-		sh_type : Elf64_Word;
-		sh_flags : Elf64_Xword;
-		sh_addr : Elf64_Addr;
-		sh_offset : Elf64_Off;
-		sh_size : Elf64_Xword;
-		sh_link : Elf64_Word;
-		sh_info : Elf64_Word;
-		sh_addralign : Elf64_Xword;
-		sh_entsize : Elf64_Xword;
+		sh_name : Elf64_Word := 0;
+		sh_type : Elf64_Word := 0;
+		sh_flags : Elf64_Xword := 0;
+		sh_addr : Elf64_Addr := 0;
+		sh_offset : Elf64_Off := 0;
+		sh_size : Elf64_Xword := 0;
+		sh_link : Elf64_Word := 0;
+		sh_info : Elf64_Word := 0;
+		sh_addralign : Elf64_Xword := 0;
+		sh_entsize : Elf64_Xword := 0;
 	end record
 	with Convention => C, Alignment => 8, Size => 512;
 	
@@ -201,37 +201,52 @@ package Safe_Elf_Parser with SPARK_Mode => On is
 		sh_entsize at 56 range 0 .. 63;
 	end record;
 
-	-- NOTE: C calling function will need to determine the set of 256 Shdrs to pull
-	-- e_shnum % 256 OR e_shnum & (256 - 1)
-	type Elf32_Shdr_Array is array (unsigned range 0 .. 255) of Elf32_Shdr with Convention => C;
-
-	type Elf64_Shdr_Array is array (unsigned range 0 .. 255) of Elf64_Shdr with Convention => C;
-	type Shdr_Array_Count is new size_t;
-
+	-- NOTE: C calling function will need to determine the page of Shdrs to pull
+	SHDR_ARRAY_SIZE : constant Natural := 32 with Convention => C;
+	type Elf32_Shdr_Array is array (size_t range 0 .. size_t(SHDR_ARRAY_SIZE - 1)) of Elf32_Shdr with Convention => C;
+	type Elf64_Shdr_Array is array (size_t range 0 .. size_t(SHDR_ARRAY_SIZE - 1)) of Elf64_Shdr with Convention => C;
 
 	-- C has no ability to return arrays, so wrap the array in a record has a hack
 	-- this is effectively
-	-- struct thingy { Elf32_Shdr arr[256]; unsigned int count };
+	-- struct thingy { Elf32_Shdr arr[256]; size_t count };
 	
 	subtype Elf32_Shdr_Bytes is ByteArray (0 .. 39);
-	
+	subtype Elf32_Shdr_Array_Struct_Count is size_t range 0 .. Elf32_Shdr_Array'Length;
 	type Elf32_Shdr_Array_Struct is record
 		arr :	Elf32_Shdr_Array;
-		count : Shdr_Array_Count;
-	end record with Convention => C;
-	
-	type Elf64_Shdr_Array_Struct is record
-		arr :	Elf64_Shdr_Array;
-		count : Shdr_Array_Count;
+		count : Elf32_Shdr_Array_Struct_Count;
 	end record with Convention => C;
 
+	subtype Elf64_Shdr_Bytes is ByteArray (0 .. 63);
+	subtype Elf64_Shdr_Array_Struct_Count is size_t range 0 .. Elf32_Shdr_Array'Length;
+	type Elf64_Shdr_Array_Struct is record
+		arr :	Elf64_Shdr_Array;
+		count : Elf64_Shdr_Array_Struct_Count;
+	end record with Convention => C;
+
+	-- Note: Pages start at 0.
 	function GetELFSectionHeaders32 (
-		fPath : in chars_ptr
+		fPath : in chars_ptr;
+		page : in size_t
 	) 
 	return Elf32_Shdr_Array_Struct
 	with
 		Global => Null,
 		SPARK_Mode => On,
+		Pre => page < (65536 / Elf32_Shdr_Array'Length), -- illogical to retrieve more than 65535 shdrs anyway
 		Export, Convention => C, External_Name => "GetELFSectionHeaders32";
+
+	-- Note: Pages start at 0.
+	function GetELFSectionHeaders64 (
+		fPath : in chars_ptr;
+		page : in size_t
+	) 
+	return Elf64_Shdr_Array_Struct
+	with
+		Global => Null,
+		SPARK_Mode => On,
+		Pre => page < (65536 / Elf32_Shdr_Array'Length), -- illogical to retrieve more than 65535 shdrs anyway
+		Export, Convention => C, External_Name => "GetELFSectionHeaders64";
+
 
 end Safe_Elf_Parser;

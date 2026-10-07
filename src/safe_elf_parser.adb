@@ -106,7 +106,7 @@ is
 		   return elfHeader64;
 	end;
 
-	function GetELFSectionHeaders32 (fPath : in chars_ptr) return Elf32_Shdr_Array_Struct
+	function GetELFSectionHeaders32 (fPath : in chars_ptr; page : in size_t) return Elf32_Shdr_Array_Struct
 		with SPARK_Mode => On
 	is
 		-- Get ELF headers (32bit).
@@ -117,46 +117,194 @@ is
 		-- NOTE: EI_CLASS defines the SHDR format, but e_shentsize MAY differ.
 	
 		-- we will return e32sas
-		e32sas : Elf32_Shdr_Array_Struct; -- 0 .. 255
+		e32sas : Elf32_Shdr_Array_Struct;
+		e32sa : Elf32_Shdr_Array := (others => (others => <>));
+		
+		initial_offset : size_t;
+		remaining : size_t;
 	begin
-		--  -- On 32 bit, ehdr should be 40 bytes.
-		--  if elf_header_32.e_shentsize /= 40 then
-		--  	-- invalid section header size. this is a known anti-analysis trick, 
-		--  	-- so the user should repair this first.
-		--  	e32sas.count := 0;
-		--  	return e32sas;
-		--  end if;
-		--
-		--  -- Otherwise, go to the offset specified by EHDR and copy 40 * num sections bytes.
-		--  declare
-		--  	e32sa : Elf32_Shdr_Array;
-		--  	e32s : Elf32_Shdr;
-		--  	bArray : Elf32_Shdr_Bytes;
-		--  begin
-		--  	-- BAD LOGIC
-		--  	for I in 0 .. elf_header_32.e_shnum - 1 loop
-		--  		bArray := Elf32_Shdr_Bytes(ReadChunkFromMmap(fPath, 40, size_t(elf_header_32.e_shoff)));
-		--  		-- Rebuild each elf32_shdr and add it to the e32sas
-		--  		e32s.sh_name := Get32 (bArray, 0, Little);
-		--  		e32s.sh_type := Get32 (bArray, 4, Little);
-		--  		e32s.sh_flags := Get32 (bArray, 8, Little);
-		--  		e32s.sh_addr := Get32 (bArray, 12, Little);
-		--  		e32s.sh_offset := Get32 (bArray, 16, Little);
-		--  		e32s.sh_size := Get32 (bArray, 20, Little);
-		--  		e32s.sh_link := Get32 (bArray, 24, Little);
-		--  		e32s.sh_info := Get32 (bArray, 28, Little);
-		--  		e32s.sh_addralign := Get32 (bArray, 32, Little);
-		--  		e32s.sh_entsize := Get32 (bArray, 36, Little);
-		--
-		--  		e32sa(unsigned(I)) := e32s;
-		--  		e32sas.count := e32sas.count + 1;
-		--  	end loop;
-		--  	e32sas.arr := e32sa;
-		--  end;
-		--
-		--  pragma Assert( e32sas.arr'Length = elf_header_32.e_shnum );
+		-- Default initialize return.
+		e32sas.count := 0;
+		e32sas.arr := e32sa;
+
+		-- On 32 bit, ehdr should be 40 bytes.
+		-- Handle invalid section header size (known anti-analysis trick to be repaired)
+		-- Handle requesting pages beyond 0 for shnum less than 32 (overflow will occur)
+
+		-- NOTE: This parser does not support the Extended Section Header spec yet (e_shnum = 0).
+		if (elf_header_32.e_shentsize /= (Elf32_Shdr'Size / 8)) 
+			or else (elf_header_32.e_shnum = 0) 
+			or else (page * Elf32_Shdr_Array'Length > size_t(elf_header_32.e_shnum))
+		then
+			-- invalid section header size. this is a known anti-analysis trick, 
+			-- so the user should repair this file first.
+
+			return e32sas;
+		end if;
+		
+		-- Calculate offset and remainder
+		-- offset is (entries in e32sas x page number x bytes per entry) + offset defined in header
+		initial_offset := (Elf32_Shdr_Array'Length * page * size_t(elf_header_32.e_shentsize)) + size_t(elf_header_32.e_shoff);
+
+		-- Handle last page fill
+		remaining := size_t(elf_header_32.e_shnum) - (page * Elf32_Shdr_Array'Length);
+		if (remaining > Elf32_Shdr_Array'Length) then
+			e32sas.count := Elf32_Shdr_Array'Length;
+		else 
+			-- last page will have remaining elements
+			e32sas.count := remaining;
+		end if;
+
+		-- Make sure that the present request will not overread the file.
+		-- If we are, return the array of 0 elements.
+		check_block: declare
+			check_cond : Boolean := ((Elf32_Shdr_Array'Length * page) + e32sas.count > size_t(elf_header_32.e_shnum));
+		begin
+			if (check_cond) then
+				return e32sas;
+			end if;
+		end check_block;
+
+		copy_loop: declare
+			e32s : Elf32_Shdr;
+			bArray : Elf32_Shdr_Bytes;
+			cnt : constant Natural := Natural(e32sas.count);
+			-- Need to keep to Natural numbers, or gnatprove will try to verify (2^64-1).
+		begin
+			for I in 0 .. cnt - 1 loop
+				
+				pragma Loop_Invariant(
+					e32sas.count <= Elf32_Shdr_Array'Length
+					and then I < cnt
+				);
+
+				bArray := Elf32_Shdr_Bytes(
+					ReadChunkFromMmap(fPath, 40, initial_offset + (
+								size_t(I) * size_t(elf_header_32.e_shentsize)
+							)
+						)
+					);
+
+				-- Rebuild each elf32_shdr and add it to the e32sas
+				e32s.sh_name := Get32 (bArray, 0, Little);
+				e32s.sh_type := Get32 (bArray, 4, Little);
+				e32s.sh_flags := Get32 (bArray, 8, Little);
+				e32s.sh_addr := Get32 (bArray, 12, Little);
+				e32s.sh_offset := Get32 (bArray, 16, Little);
+				e32s.sh_size := Get32 (bArray, 20, Little);
+				e32s.sh_link := Get32 (bArray, 24, Little);
+				e32s.sh_info := Get32 (bArray, 28, Little);
+				e32s.sh_addralign := Get32 (bArray, 32, Little);
+				e32s.sh_entsize := Get32 (bArray, 36, Little);
+
+				e32sa(size_t(I)) := e32s;
+			end loop;
+			e32sas.arr := e32sa;
+		end copy_loop;
+
 		return e32sas;
 		
 	end;
+
+	function GetELFSectionHeaders64 (fPath : in chars_ptr; page : in size_t) return Elf64_Shdr_Array_Struct
+		with SPARK_Mode => On
+	is
+		-- Get ELF headers (64bit).
+		Little : constant Boolean := ReadChunkFromMmap(fPath, 1, 5)(0) = 1;
+		elf_header_64 : constant Elf64_Ehdr := GetElfHeader64(fPath);
+
+		-- From the elf_header, we can now determine the count of sections + size
+		-- NOTE: EI_CLASS defines the SHDR format, but e_shentsize MAY differ.
+
+		-- we will return e64sas
+		e64sas : Elf64_Shdr_Array_Struct;
+		e64sa : Elf64_Shdr_Array := (others => (others => <>));
+
+		initial_offset : size_t;
+		remaining : size_t;
+	begin
+		-- Default initialize return.
+		e64sas.count := 0;
+		e64sas.arr := e64sa;
+
+		-- On 64 bit, ehdr should be 64 bytes.
+		-- Handle invalid section header size (known anti-analysis trick to be repaired)
+		-- Handle requesting pages beyond 0 for shnum less than 64 (overflow will occur)
+
+		-- NOTE: This parser does not support the Extended Section Header spec yet (e_shnum = 0).
+		if (elf_header_64.e_shentsize /= (Elf64_Shdr'Size / 8)) 
+			or else (elf_header_64.e_shnum = 0) 
+			or else (page * Elf64_Shdr_Array'Length > size_t(elf_header_64.e_shnum))
+		then
+			-- invalid section header size. this is a known anti-analysis trick, 
+			-- so the user should repair this file first.
+
+			return e64sas;
+		end if;
+
+		-- Calculate offset and remainder
+		-- offset is (entries in e64sas x page number x bytes per entry) + offset defined in header
+		initial_offset := (Elf64_Shdr_Array'Length * page * size_t(elf_header_64.e_shentsize)) + size_t(elf_header_64.e_shoff);
+
+		-- Handle last page fill
+		remaining := size_t(elf_header_64.e_shnum) - (page * Elf64_Shdr_Array'Length);
+		if (remaining > Elf64_Shdr_Array'Length) then
+			e64sas.count := Elf64_Shdr_Array'Length;
+		else 
+			-- last page will have remaining elements
+			e64sas.count := remaining;
+		end if;
+
+		-- Make sure that the present request will not overread the file.
+		-- If we are, return the array of 0 elements.
+		check_block: declare
+		check_cond : Boolean := ((Elf64_Shdr_Array'Length * page) + e64sas.count > size_t(elf_header_64.e_shnum));
+		begin
+			if (check_cond) then
+				return e64sas;
+			end if;
+		end check_block;
+
+		copy_loop: declare
+			e64s : Elf64_Shdr;
+			bArray : Elf64_Shdr_Bytes;
+			cnt : constant Natural := Natural(e64sas.count);
+			-- Need to keep to Natural numbers, or gnatprove will try to verify (2^64-1).
+		begin
+			for I in 0 .. cnt - 1 loop
+
+				pragma Loop_Invariant(
+					e64sas.count <= Elf64_Shdr_Array'Length
+					and then I < cnt
+					);
+
+				bArray := Elf64_Shdr_Bytes(
+					ReadChunkFromMmap(fPath, 64, initial_offset + (
+						size_t(I) * size_t(elf_header_64.e_shentsize)
+						)
+					)
+				);
+
+				-- Rebuild each elf64_shdr and add it to the e64sas
+				e64s.sh_name := Get32 (bArray, 0, Little);
+				e64s.sh_type := Get32 (bArray, 4, Little);
+				e64s.sh_flags := Get64 (bArray, 8, Little);
+				e64s.sh_addr := Get64 (bArray, 16, Little);
+				e64s.sh_offset := Get64 (bArray, 24, Little);
+				e64s.sh_size := Get64 (bArray, 32, Little);
+				e64s.sh_link := Get32 (bArray, 40, Little);
+				e64s.sh_info := Get32 (bArray, 44, Little);
+				e64s.sh_addralign := Get64 (bArray, 48, Little);
+				e64s.sh_entsize := Get64 (bArray, 56, Little);
+
+				e64sa(size_t(I)) := e64s;
+			end loop;
+			e64sas.arr := e64sa;
+		end copy_loop;
+
+		return e64sas;
+
+	end;
+
 
 end Safe_Elf_Parser;
