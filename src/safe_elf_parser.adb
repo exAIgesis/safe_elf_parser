@@ -118,7 +118,7 @@ is
 	
 		-- we will return e32sas
 		e32sas : Elf32_Shdr_Array_Struct;
-		e32sa : Elf32_Shdr_Array := (others => (others => <>));
+		e32sa : Elf32_Shdr_Array := [others => (others => <>)];
 		
 		initial_offset : size_t;
 		remaining : size_t;
@@ -158,7 +158,7 @@ is
 		-- Make sure that the present request will not overread the file.
 		-- If we are, return the array of 0 elements.
 		check_block: declare
-			check_cond : Boolean := ((Elf32_Shdr_Array'Length * page) + e32sas.count > size_t(elf_header_32.e_shnum));
+			check_cond : constant Boolean := ((Elf32_Shdr_Array'Length * page) + e32sas.count > size_t(elf_header_32.e_shnum));
 		begin
 			if (check_cond) then
 				return e32sas;
@@ -169,15 +169,10 @@ is
 			e32s : Elf32_Shdr;
 			bArray : Elf32_Shdr_Bytes;
 			cnt : constant Natural := Natural(e32sas.count);
-			-- Need to keep to Natural numbers, or gnatprove will try to verify (2^64-1).
+			-- Need to keep to Natural numbers, or gnatprove will try to verify for overflow.
 		begin
 			for I in 0 .. cnt - 1 loop
 				
-				pragma Loop_Invariant(
-					e32sas.count <= Elf32_Shdr_Array'Length
-					and then I < cnt
-				);
-
 				bArray := Elf32_Shdr_Bytes(
 					ReadChunkFromMmap(fPath, 40, initial_offset + (
 								size_t(I) * size_t(elf_header_32.e_shentsize)
@@ -218,7 +213,7 @@ is
 
 		-- we will return e64sas
 		e64sas : Elf64_Shdr_Array_Struct;
-		e64sa : Elf64_Shdr_Array := (others => (others => <>));
+		e64sa : Elf64_Shdr_Array := [others => (others => <>)];
 
 		initial_offset : size_t;
 		remaining : size_t;
@@ -258,7 +253,7 @@ is
 		-- Make sure that the present request will not overread the file.
 		-- If we are, return the array of 0 elements.
 		check_block: declare
-		check_cond : Boolean := ((Elf64_Shdr_Array'Length * page) + e64sas.count > size_t(elf_header_64.e_shnum));
+			check_cond : constant Boolean := ((Elf64_Shdr_Array'Length * page) + e64sas.count > size_t(elf_header_64.e_shnum));
 		begin
 			if (check_cond) then
 				return e64sas;
@@ -269,14 +264,10 @@ is
 			e64s : Elf64_Shdr;
 			bArray : Elf64_Shdr_Bytes;
 			cnt : constant Natural := Natural(e64sas.count);
-			-- Need to keep to Natural numbers, or gnatprove will try to verify (2^64-1).
+			-- Need to keep to Natural numbers, or gnatprove will try to verify for overflow.
 		begin
 			for I in 0 .. cnt - 1 loop
 
-				pragma Loop_Invariant(
-					e64sas.count <= Elf64_Shdr_Array'Length
-					and then I < cnt
-					);
 
 				bArray := Elf64_Shdr_Bytes(
 					ReadChunkFromMmap(fPath, 64, initial_offset + (

@@ -2,9 +2,6 @@ pragma Assertion_Policy (Check);
 
 with Interfaces.C; use Interfaces.C;
 with Interfaces.C.Strings; use Interfaces.C.Strings;
-with Ada.Containers.Hashed_Maps;
-with Ada.Strings.Unbounded;
-with Ada.Strings.Unbounded.Hash;
 
 package Safe_Elf_Parser with SPARK_Mode => On is
 	-- as this library is intended for internal use, we only implement ELF scanning relevant to our needs.
