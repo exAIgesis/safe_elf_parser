@@ -2,6 +2,7 @@ pragma Assertion_Policy (Check);
 
 with Interfaces.C; use Interfaces.C;
 with Interfaces.C.Strings; use Interfaces.C.Strings;
+with mmap_io; use mmap_io;
 
 package Safe_Elf_Parser with SPARK_Mode => On is
 	-- as this library is intended for internal use, we only implement ELF scanning relevant to our needs.
@@ -97,7 +98,7 @@ package Safe_Elf_Parser with SPARK_Mode => On is
 		e_shstrndx  at 62 range 0 .. 15;    -- 62 .. 63 bytes
 	end record;
 
-	type ByteArray is array (size_t range <>) of unsigned_char; 
+	--type ByteArray is array (size_t range <>) of unsigned_char;
 	subtype Elf64_Ehdr_Bytes is ByteArray (0 .. 63);
 	subtype Elf32_Ehdr_Bytes is ByteArray (0 .. 51);
 	subtype Elf_Single_Byte is ByteArray (0 .. 0);
@@ -230,7 +231,6 @@ package Safe_Elf_Parser with SPARK_Mode => On is
 	with
 		Global => Null,
 		SPARK_Mode => On,
-		Pre => page < (65536 / Elf32_Shdr_Array'Length), -- illogical to retrieve more than 65535 shdrs anyway
 		Export, Convention => C, External_Name => "GetELFSectionHeaders32";
 
 	-- Note: Pages start at 0.
@@ -242,7 +242,6 @@ package Safe_Elf_Parser with SPARK_Mode => On is
 	with
 		Global => Null,
 		SPARK_Mode => On,
-		Pre => page < (65536 / Elf32_Shdr_Array'Length), -- illogical to retrieve more than 65535 shdrs anyway
 		Export, Convention => C, External_Name => "GetELFSectionHeaders64";
 
 

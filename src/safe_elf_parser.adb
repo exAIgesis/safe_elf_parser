@@ -110,8 +110,8 @@ is
 		with SPARK_Mode => On
 	is
 		-- Get ELF headers (32bit).
-		Little : constant Boolean := ReadChunkFromMmap(fPath, 1, 5)(0) = 1;
 		elf_header_32 : constant Elf32_Ehdr := GetElfHeader32(fPath);
+		Little : constant Boolean := elf_header_32.e_ident(5) = 1;
 		
 		-- From the elf_header, we can now determine the count of sections + size
 		-- NOTE: EI_CLASS defines the SHDR format, but e_shentsize MAY differ.
@@ -122,32 +122,44 @@ is
 		
 		initial_offset : size_t;
 		remaining : size_t;
+
+		-- normally e_shnum, fake sh_size for special case
+		actual_section_count : size_t := size_t(elf_header_32.e_shnum);
 	begin
 		-- Default initialize return.
 		e32sas.count := 0;
 		e32sas.arr := e32sa;
 
+		-- Immediately bail out if e_shoff is 0, otherwise we'll read junk data
+		if elf_header_32.e_shoff = 0 then
+			return e32sas;
+		end if;
+
+		-- Edit: It supports Extended section headers now!
+		if (elf_header_32.e_shnum = 0) then
+			actual_section_count := size_t(Get32(ReadChunkFromMmap(fPath, size_t(Elf32_Shdr_Bytes'Length), size_t(elf_header_32.e_shoff)), 20, Little));
+		end if;
+
 		-- On 32 bit, ehdr should be 40 bytes.
 		-- Handle invalid section header size (known anti-analysis trick to be repaired)
 		-- Handle requesting pages beyond 0 for shnum less than 32 (overflow will occur)
 
-		-- NOTE: This parser does not support the Extended Section Header spec yet (e_shnum = 0).
 		if (elf_header_32.e_shentsize /= (Elf32_Shdr'Size / 8)) 
-			or else (elf_header_32.e_shnum = 0) 
-			or else (page * Elf32_Shdr_Array'Length > size_t(elf_header_32.e_shnum))
+			or else (page * Elf32_Shdr_Array'Length > actual_section_count)
 		then
 			-- invalid section header size. this is a known anti-analysis trick, 
 			-- so the user should repair this file first.
 
 			return e32sas;
 		end if;
-		
+
 		-- Calculate offset and remainder
 		-- offset is (entries in e32sas x page number x bytes per entry) + offset defined in header
 		initial_offset := (Elf32_Shdr_Array'Length * page * size_t(elf_header_32.e_shentsize)) + size_t(elf_header_32.e_shoff);
 
-		-- Handle last page fill
-		remaining := size_t(elf_header_32.e_shnum) - (page * Elf32_Shdr_Array'Length);
+				
+		remaining := actual_section_count - (page * Elf32_Shdr_Array'Length);
+
 		if (remaining > Elf32_Shdr_Array'Length) then
 			e32sas.count := Elf32_Shdr_Array'Length;
 		else 
@@ -158,7 +170,7 @@ is
 		-- Make sure that the present request will not overread the file.
 		-- If we are, return the array of 0 elements.
 		check_block: declare
-			check_cond : constant Boolean := ((Elf32_Shdr_Array'Length * page) + e32sas.count > size_t(elf_header_32.e_shnum));
+			check_cond : constant Boolean := ((Elf32_Shdr_Array'Length * page) + e32sas.count > actual_section_count);
 		begin
 			if (check_cond) then
 				return e32sas;
@@ -174,7 +186,7 @@ is
 			for I in 0 .. cnt - 1 loop
 				
 				bArray := Elf32_Shdr_Bytes(
-					ReadChunkFromMmap(fPath, 40, initial_offset + (
+					ReadChunkFromMmap(fPath, size_t(Elf32_Shdr_Bytes'Length), initial_offset + (
 								size_t(I) * size_t(elf_header_32.e_shentsize)
 							)
 						)
@@ -205,8 +217,8 @@ is
 		with SPARK_Mode => On
 	is
 		-- Get ELF headers (64bit).
-		Little : constant Boolean := ReadChunkFromMmap(fPath, 1, 5)(0) = 1;
 		elf_header_64 : constant Elf64_Ehdr := GetElfHeader64(fPath);
+		Little : constant Boolean := elf_header_64.e_ident(5) = 1;
 
 		-- From the elf_header, we can now determine the count of sections + size
 		-- NOTE: EI_CLASS defines the SHDR format, but e_shentsize MAY differ.
@@ -217,19 +229,30 @@ is
 
 		initial_offset : size_t;
 		remaining : size_t;
+
+		-- normally e_shnum, fake sh_size for special case
+		actual_section_count : size_t := size_t(elf_header_64.e_shnum);
 	begin
 		-- Default initialize return.
 		e64sas.count := 0;
 		e64sas.arr := e64sa;
+		
+		-- Immediately bail out if e_shoff is 0, otherwise we'll read junk data
+		if elf_header_64.e_shoff = 0 then
+			return e64sas;
+		end if;
+		
+		-- Edit: It supports Extended section headers now!
+		if (elf_header_64.e_shnum = 0) then
+			actual_section_count := size_t(Get64(ReadChunkFromMmap(fPath, size_t(Elf64_Shdr_Bytes'Length), size_t(elf_header_64.e_shoff)), 32 , Little));
+		end if;
 
 		-- On 64 bit, ehdr should be 64 bytes.
 		-- Handle invalid section header size (known anti-analysis trick to be repaired)
 		-- Handle requesting pages beyond 0 for shnum less than 64 (overflow will occur)
 
-		-- NOTE: This parser does not support the Extended Section Header spec yet (e_shnum = 0).
 		if (elf_header_64.e_shentsize /= (Elf64_Shdr'Size / 8)) 
-			or else (elf_header_64.e_shnum = 0) 
-			or else (page * Elf64_Shdr_Array'Length > size_t(elf_header_64.e_shnum))
+			or else (page * Elf64_Shdr_Array'Length > actual_section_count)
 		then
 			-- invalid section header size. this is a known anti-analysis trick, 
 			-- so the user should repair this file first.
@@ -241,8 +264,10 @@ is
 		-- offset is (entries in e64sas x page number x bytes per entry) + offset defined in header
 		initial_offset := (Elf64_Shdr_Array'Length * page * size_t(elf_header_64.e_shentsize)) + size_t(elf_header_64.e_shoff);
 
+		
+
 		-- Handle last page fill
-		remaining := size_t(elf_header_64.e_shnum) - (page * Elf64_Shdr_Array'Length);
+		remaining := actual_section_count - (page * Elf64_Shdr_Array'Length);
 		if (remaining > Elf64_Shdr_Array'Length) then
 			e64sas.count := Elf64_Shdr_Array'Length;
 		else 
@@ -253,7 +278,7 @@ is
 		-- Make sure that the present request will not overread the file.
 		-- If we are, return the array of 0 elements.
 		check_block: declare
-			check_cond : constant Boolean := ((Elf64_Shdr_Array'Length * page) + e64sas.count > size_t(elf_header_64.e_shnum));
+			check_cond : constant Boolean := ((Elf64_Shdr_Array'Length * page) + e64sas.count > actual_section_count);
 		begin
 			if (check_cond) then
 				return e64sas;
@@ -270,7 +295,7 @@ is
 
 
 				bArray := Elf64_Shdr_Bytes(
-					ReadChunkFromMmap(fPath, 64, initial_offset + (
+					ReadChunkFromMmap(fPath, size_t(Elf64_Shdr_Bytes'Length), initial_offset + (
 						size_t(I) * size_t(elf_header_64.e_shentsize)
 						)
 					)
