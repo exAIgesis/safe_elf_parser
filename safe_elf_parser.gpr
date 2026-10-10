@@ -9,7 +9,7 @@ project Safe_Elf_Parser is
    for Object_Dir use "obj/" & Safe_Elf_Parser_Config.Build_Profile;
    for Create_Missing_Dirs use "True";
    for Library_Dir use "lib";
-   for Library_Interface use ("safe_elf_parser");
+   for Library_Interface use ("safe_elf_parser", "mmap_io");
    for Library_Standalone use "encapsulated";
    for Library_Auto_Init use "false";
 

@@ -1,6 +1,5 @@
 with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
-with mmap_io; use mmap_io;
 
 package body Safe_Elf_Parser 
 	with SPARK_Mode => On
