@@ -11,7 +11,7 @@ is
 		F : File_Type;
 		S : Stream_Access;
 
-		bArray : ByteArray (1 .. len);
+		bArray : ByteArray (0 .. len - 1);
 		cnt : Count;
 	begin
 		-- Get Size of file

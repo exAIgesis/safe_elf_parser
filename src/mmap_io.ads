@@ -9,6 +9,6 @@ is
 		with SPARK_Mode => On,
 		Global => Null,
 		Pre => len > 0,
-		Post => ReadChunkFromMmap'Result'First = 1 
-		and then ReadChunkFromMmap'Result'Last = len; 
+		Post => ReadChunkFromMmap'Result'First = 0
+		and then ReadChunkFromMmap'Result'Last = len - 1; 
 end Mmap_IO;
